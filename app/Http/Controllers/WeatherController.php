@@ -3,59 +3,39 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
-use App\Services\WeatherApiService;
+use Illuminate\Support\Facades\Log;
+use App\Services\WeatherService;
+use App\Exceptions\CityNotFoundException;
+use App\Exceptions\WeatherFetchException;
 
 class WeatherController extends Controller
 {
+    private WeatherService $weatherService;
+
+    public function __construct(WeatherService $weatherService)
+    {
+        $this->weatherService = $weatherService;
+    }
+
     public function getWeather(Request $request)
     {
         $city = $request->query('city');
-    
+
         if (!$city) {
-            return response()->json(['error' => 'City is required'], 400);
+            return response()->json(['error' => 'É necessário informar a cidade'], 400);
         }
-    
-        $cachedWeather = Cache::get("weather-{$city}");
-        if ($cachedWeather) {
-            return response()->json($cachedWeather);
-        }
-    
+        
         try {
-            $location = WeatherApiService::fetch('geo/1.0/direct', [
-                'q' => $city,
-                'limit' => 1,
-            ]);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'City not found'], 404);
+            $weatherData = $this->weatherService->getWeatherData($city);
+            return response()->json($weatherData);
+        } catch (CityNotFoundException $e) {
+            Log::warning("Cidade não encontrada: {$city}");
+            return response()->json(['error' => $e->getMessage()], 404);
+        } catch (WeatherFetchException $e) {
+            Log::error("Erro ao buscar dados meteorológicos para a cidade: {$city}");
+            return response()->json(['error' => $e->getMessage()], 500);
         }
-    
-        if (empty($location)) {
-            return response()->json(['error' => 'City not found'], 404);
-        }
-    
-        $lat = $location[0]['lat'];
-        $lon = $location[0]['lon'];
-    
-        try {
-            $data = WeatherApiService::fetch('data/3.0/onecall', [
-                'lat' => $lat,
-                'lon' => $lon,
-                'units' => 'metric',
-                'lang' => 'pt',
-                'exclude' => 'minutely',
-            ]);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to fetch weather data'], 500);
-        }
-    
-        $formattedWeather = [
-            'current' => WeatherApiService::formatCurrentWeather($data['current']),
-            'daily' => WeatherApiService::formatDailyWeather($data['daily']),
-        ];
-    
-        Cache::put("weather-{$city}", $formattedWeather, now()->addHour());
-    
-        return response()->json($formattedWeather);
     }
 }
+
+
