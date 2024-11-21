@@ -3,23 +3,24 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use App\DataTransferObjects\CurrentWeatherDTO;
+use App\DataTransferObjects\DailyWeatherDTO;
 
 class WeatherApiService
 {
-    public static function getBaseUrl(): string
+    private string $baseUrl;
+    private string $apiKey;
+
+    public function __construct(string $baseUrl, string $apiKey)
     {
-        return config('app.weather_api_url');
+        $this->baseUrl = $baseUrl;
+        $this->apiKey = $apiKey;
     }
 
-    public static function getApiKey(): string
+    public function fetch(string $endpoint, array $params = [])
     {
-        return config('app.weather_api_key');
-    }
-
-    public static function fetch(string $endpoint, array $params = [])
-    {
-        $url = self::getBaseUrl() . $endpoint;
-        $params['appid'] = self::getApiKey();
+        $url = $this->baseUrl . $endpoint;
+        $params['appid'] = $this->apiKey;
 
         $response = Http::get($url, $params);
 
@@ -27,27 +28,29 @@ class WeatherApiService
         return $response->json();
     }
 
-    public static function formatCurrentWeather(array $currentData): array
+    public function formatCurrentWeather(array $currentData): CurrentWeatherDTO
     {
-        return [
-            'temperature' => $currentData['temp'],
-            'description' => ucfirst($currentData['weather'][0]['description']),
-            'humidity' => $currentData['humidity'] . '%',
-            'wind_speed' => $currentData['wind_speed'] . ' m/s',
-        ];
+        return new CurrentWeatherDTO(
+            $currentData['temp'],
+            ucfirst($currentData['weather'][0]['description']),
+            $currentData['humidity'] . '%',
+            $currentData['wind_speed'] . ' m/s',
+        );
     }
 
-    public static function formatDailyWeather(array $dailyData): array
+    public function formatDailyWeather(array $dailyData): array
     {
         return array_map(function ($day) {
-            return [
-                'date' => date('Y-m-d', $day['dt']),
-                'temperature' => [
+            return new DailyWeatherDTO(
+                date('Y-m-d', $day['dt']),
+                [
                     'min' => $day['temp']['min'] . '°C',
                     'max' => $day['temp']['max'] . '°C',
                 ],
-                'description' => ucfirst($day['weather'][0]['description']),
-            ];
+                ucfirst($day['weather'][0]['description']),
+            );
         }, $dailyData);
     }
 }
+
+
